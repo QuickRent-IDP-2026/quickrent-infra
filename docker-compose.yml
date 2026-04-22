@@ -1,0 +1,82 @@
+version: '3.8'
+
+services:
+  # --- ZONE 3: DATABASE NETWORK ---
+  db:
+    image: postgres:latest
+    container_name: quickrent-db
+    environment:
+      POSTGRES_USER: user
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: quickrent_db
+    networks:
+      - db-net
+    volumes:
+      - db_data:/var/lib/postgresql/data
+
+  db-admin:
+    image: adminer:latest
+    container_name: quickrent-adminer
+    ports:
+      - "8080:8080"
+    networks:
+      - db-net
+
+  # --- ZONE 2: BACKEND NETWORK ---
+  data-service:
+    build: ../quickrent-data
+    container_name: data-service
+    networks:
+      - db-net       
+      - backend-net
+    environment:
+      DATABASE_URL: postgres://user:password@db:5432/quickrent_db
+
+  auth-service:
+    build: ../quickrent-auth
+    container_name: auth-service
+    networks:
+      - backend-net
+
+  logic-service:
+    build: ../quickrent-logic
+    container_name: logic-service
+    networks:
+      - backend-net
+
+  # --- ZONE 1: PUBLIC NETWORK ---
+  kong:
+    image: kong:latest
+    container_name: kong-gateway
+    environment:
+      KONG_DATABASE: "off"
+    ports:
+      - "8000:8000"
+      - "8001:8001"
+    networks:
+      - public-net
+      - backend-net
+
+  # --- ZONE 4: ADMIN & MONITORING ---
+  portainer:
+    image: portainer/portainer-ce:latest
+    container_name: portainer
+    ports:
+      - "9443:9443"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    networks:
+      - admin-net
+
+networks:
+  public-net:
+    driver: bridge
+  backend-net:
+    driver: bridge
+  db-net:
+    driver: bridge
+  admin-net:
+    driver: bridge
+
+volumes:
+  db_data:
