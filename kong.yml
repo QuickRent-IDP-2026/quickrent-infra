@@ -1,0 +1,16 @@
+_format_version: "3.0"
+_transform: true
+
+services:
+  - name: auth-service
+    url: http://auth-service:8000
+    routes:
+      - name: auth-route
+        paths:
+          - /auth
+  - name: logic-service
+    url: http://logic-service:8000
+    routes:
+      - name: logic-route
+        paths:
+          - /rent-api

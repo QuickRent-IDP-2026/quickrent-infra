@@ -12,7 +12,12 @@ services:
     networks:
       - db-net
     volumes:
-      - db_data:/var/lib/postgresql/data
+      - db_data:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U user -d quickrent_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
 
   db-admin:
     image: adminer:latest
@@ -30,19 +35,31 @@ services:
       - db-net       
       - backend-net
     environment:
-      DATABASE_URL: postgres://user:password@db:5432/quickrent_db
+      DATABASE_URL: postgresql://user:password@db:5432/quickrent_db
+    depends_on:
+      db:
+        condition: service_healthy
 
   auth-service:
     build: ../quickrent-auth
     container_name: auth-service
     networks:
       - backend-net
+    depends_on:
+      data-service:
+        condition: service_started
 
   logic-service:
     build: ../quickrent-logic
     container_name: logic-service
     networks:
       - backend-net
+    environment:
+      AUTH_SERVICE_URL: http://auth-service:8000
+      DATA_SERVICE_URL: http://data-service:8000
+    depends_on:
+      - auth-service
+      - data-service
 
   # --- ZONE 1: PUBLIC NETWORK ---
   kong:
@@ -50,9 +67,18 @@ services:
     container_name: kong-gateway
     environment:
       KONG_DATABASE: "off"
+      KONG_DECLARATIVE_CONFIG: /usr/local/kong/declarative/kong.yml
+      KONG_PROXY_LISTEN: 0.0.0.0:8000, 0.0.0.0:8443 ssl
+      KONG_ADMIN_LISTEN: 0.0.0.0:8001, 0.0.0.0:8444 ssl
+      KONG_PROXY_ACCESS_LOG: /dev/stdout
+      KONG_ADMIN_ACCESS_LOG: /dev/stdout
+      KONG_PROXY_ERROR_LOG: /dev/stderr
+      KONG_ADMIN_ERROR_LOG: /dev/stderr
     ports:
       - "8000:8000"
       - "8001:8001"
+    volumes:
+      - ./kong.yml:/usr/local/kong/declarative/kong.yml
     networks:
       - public-net
       - backend-net
