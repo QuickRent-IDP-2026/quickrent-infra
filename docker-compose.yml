@@ -4,7 +4,6 @@ services:
   # --- ZONE 3: DATABASE NETWORK ---
   db:
     image: postgres:latest
-    container_name: quickrent-db
     environment:
       POSTGRES_USER: user
       POSTGRES_PASSWORD: password
@@ -13,6 +12,9 @@ services:
       - db-net
     volumes:
       - db_data:/var/lib/postgresql
+    deploy:
+      placement:
+        constraints: [node.role == manager]
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U user -d quickrent_db"]
       interval: 5s
@@ -21,59 +23,56 @@ services:
 
   db-admin:
     image: adminer:latest
-    container_name: quickrent-adminer
     ports:
       - "8080:8080"
     networks:
       - db-net
+    deploy:
+      placement:
+        constraints: [node.role == manager]
 
   # --- ZONE 2: BACKEND NETWORK ---
   data-service:
-    build: ../quickrent-data
-    container_name: data-service
+    image: rrsmart8/quickrent-data:latest
     networks:
       - db-net       
       - backend-net
     environment:
       DATABASE_URL: postgresql://user:password@db:5432/quickrent_db
-    depends_on:
-      db:
-        condition: service_healthy
+    deploy:
+      restart_policy:
+        condition: on-failure
+      placement:
+        constraints: [node.role == manager]
 
   auth-service:
-    build: ../quickrent-auth
-    container_name: auth-service
+    image: rrsmart8/quickrent-auth:latest
     networks:
       - backend-net
-    depends_on:
-      data-service:
-        condition: service_started
+    deploy:
+      replicas: 1
+      placement:
+        constraints: [node.role == manager]
 
   logic-service:
-    build: ../quickrent-logic
-    container_name: logic-service
+    image: rrsmart8/quickrent-logic:latest
     networks:
       - backend-net
     environment:
       AUTH_SERVICE_URL: http://auth-service:8000
       DATA_SERVICE_URL: http://data-service:8000
-    depends_on:
-      - auth-service
-      - data-service
+    deploy:
+      placement:
+        constraints: [node.role == manager]
 
   # --- ZONE 1: PUBLIC NETWORK ---
   kong:
     image: kong:latest
-    container_name: kong-gateway
     environment:
       KONG_DATABASE: "off"
       KONG_DECLARATIVE_CONFIG: /usr/local/kong/declarative/kong.yml
       KONG_PROXY_LISTEN: 0.0.0.0:8000, 0.0.0.0:8443 ssl
       KONG_ADMIN_LISTEN: 0.0.0.0:8001, 0.0.0.0:8444 ssl
-      KONG_PROXY_ACCESS_LOG: /dev/stdout
-      KONG_ADMIN_ACCESS_LOG: /dev/stdout
-      KONG_PROXY_ERROR_LOG: /dev/stderr
-      KONG_ADMIN_ERROR_LOG: /dev/stderr
     ports:
       - "8000:8000"
       - "8001:8001"
@@ -82,27 +81,57 @@ services:
     networks:
       - public-net
       - backend-net
+    deploy:
+      placement:
+        constraints: [node.role == manager]
 
   # --- ZONE 4: ADMIN & MONITORING ---
   portainer:
     image: portainer/portainer-ce:latest
-    container_name: portainer
     ports:
       - "9443:9443"
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
     networks:
       - admin-net
+    deploy:
+      placement:
+        constraints: [node.role == manager]
+
+  prometheus:
+    image: prom/prometheus:latest
+    volumes:
+      - ../quickrent-monitoring/prometheus.yml:/etc/prometheus/prometheus.yml
+    networks:
+      - admin-net
+      - backend-net
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+    deploy:
+      placement:
+        constraints: [node.role == manager]
+
+  grafana:
+    image: grafana/grafana:latest
+    ports:
+      - "3000:3000"
+    networks:
+      - admin-net
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+    deploy:
+      placement:
+        constraints: [node.role == manager]
 
 networks:
   public-net:
-    driver: bridge
+    driver: overlay
   backend-net:
-    driver: bridge
+    driver: overlay
   db-net:
-    driver: bridge
+    driver: overlay
   admin-net:
-    driver: bridge
+    driver: overlay
 
 volumes:
   db_data:

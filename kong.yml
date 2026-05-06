@@ -8,9 +8,12 @@ services:
       - name: auth-route
         paths:
           - /auth
+        strip_path: true
+
   - name: logic-service
     url: http://logic-service:8000
     routes:
       - name: logic-route
         paths:
-          - /rent-api
+          - /api
+        strip_path: true
