@@ -30,6 +30,16 @@ services:
     deploy:
       placement:
         constraints: [node.role == manager]
+    
+  frontend:
+    image: rrsmart8/quickrent-frontend:latest
+    ports:
+      - "80:80"
+    networks:
+        - public-net
+    deploy:
+      placement:
+        constraints: [node.role == manager]
 
   # --- ZONE 2: BACKEND NETWORK ---
   data-service:
